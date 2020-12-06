@@ -36,14 +36,9 @@ class Controller {
 
     @Get("")
     suspend fun getAllProfile(): HttpResponse {
-        var result: List<ImageProfile>
 
-        withContext(ArmeriaRequestContext()) {
+        val result = BusinessLogic.getAllTasking()
 
-            result = BusinessLogic.getAllTasking()
-
-            ServiceRequestContext.current()
-        }
         log.info("get all")
 
         return HttpResponse.of(result.toString())
@@ -51,14 +46,8 @@ class Controller {
 
     @Get("/:id")
     suspend fun getOneProfile(@Param("id") id: String): HttpResponse {
-        var result: ImageProfile
 
-        withContext(ArmeriaRequestContext()) {
-
-            result = BusinessLogic.getOneTasking(id)
-
-            ServiceRequestContext.current()
-        }
+        val result: ImageProfile = BusinessLogic.getOneTasking(id)
         log.info("get one")
 
         return HttpResponse.of(result.toString())

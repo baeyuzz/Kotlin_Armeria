@@ -29,11 +29,11 @@ object BusinessLogic {
         val path: String = obj.get("path").toString().replace("\"", "")
 
         // img 불러오기
-        var inputFile : File? = null
+        var inputFile: File? = null
         try {
             inputFile = File(path)
 
-        }catch (e : Exception){
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         val bufferedImage = ImageIO.read(inputFile)
@@ -43,93 +43,83 @@ object BusinessLogic {
         var name = ""
         var originalDate = ""
 
-        var p: ImageProfile?
-
+        // coroutine
+        // 1. exif 이미지 메타 정보
         withContext(myDispatcher) {
 
             val metadata: Metadata = ImageMetadataReader.readMetadata(inputFile)
 
-            // 1. exif 이미지 메타 정보
             for (directory in metadata.directories) {
                 for (tag in directory.tags) {
                     when (tag.tagName) {
-                        "Image Height" -> {
-                            height = Integer.parseInt(tag.description.split(" ")[0])
-                        }
-                        "Image Width" -> {
-                            width = Integer.parseInt(tag.description.split(" ")[0])
-                        }
-                        "File Name" -> {
-                            name = tag.description
-                        }
-                        "Date/Time Original" -> {
-                            originalDate = tag.description
-                        }
+                        "Image Height" -> height = Integer.parseInt(tag.description.split(" ")[0])
+                        "Image Width" -> width = Integer.parseInt(tag.description.split(" ")[0])
+                        "File Name" -> name = tag.description
+                        "Date/Time Original" -> originalDate = tag.description
                     }
                 }
             }
         }
 
+        val rgbs = bufferedImage.getRGB(0, 0, width, height, null, 0, width)
+        var max = 0
+        var min = 255
+        var sum = 0
+        var avg = 0
+        var histogram = IntArray(256)
+
+        // coroutine
+        // 2. 픽셀 통계
         withContext(myDispatcher) {
 
-            // 2. 픽셀 통계 및 히스토그램
             // gray scale 가정
-            var rgbs = bufferedImage.getRGB(0, 0, width, height, null, 0, width)
-
-            var max = 0
-            var min = 255
-            var sum = 0
-            var histogram = IntArray(256)
 
             for (i in 0 until width * height) {
                 val pixel = rgbs[i] and 0xff
-                histogram[pixel]++ // 히스토그램
                 sum += pixel // pixel avg 구하기 위해서
                 min = Integer.min(min, pixel)
                 max = Integer.max(max, pixel)
             }
 
-            val div = width * height
-            val avg = sum / div
-
-            p = ImageProfile(name, width, height, originalDate, max, min, avg, histogram)
+            avg = sum / (width * height)
         }
+
+        // coroutine
+        // 3. 히스토그램
+        withContext(myDispatcher) {
+            for (i in 0 until width * height) {
+                val pixel = rgbs[i] and 0xff
+                histogram[pixel]++ // 히스토그램
+            }
+        }
+
+        val p = ImageProfile(name, width, height, originalDate, max, min, avg, histogram)
 
         // mongoDB에 저장
-        withContext(myDispatcher) {
-            p?.let { mongodb.insert(it) }
-        }
+        p.let { mongodb.insert(it) }
+
         return p
     }
 
     suspend fun getAllTasking(): List<ImageProfile> {
 
-        var res: FindIterable<Document>
         val profileList = ArrayList<ImageProfile>()
+        // mongoDB 에서 전체 찾기
+        var res: FindIterable<Document> = mongodb.findAll()
 
-        withContext(myDispatcher) {
-            // mongoDB 에서 전체 찾기
-            res = mongodb.findAll()
-
-            // document -> Profile 객체로 변환
-            for (r in res) {
-                // ArrayList<Profile> 에 추가
-                profileList.add(initializeProfile(r))
-            }
+        // document -> Profile 객체로 변환
+        for (r in res) {
+            // ArrayList<Profile> 에 추가
+            profileList.add(initializeProfile(r))
         }
-
         return profileList
     }
 
     suspend fun getOneTasking(id: String): ImageProfile {
-        var res: FindIterable<Document>
         var p: ImageProfile? = null
-
-        withContext(myDispatcher) {
-            res = mongodb.findOne(id)
-            for (r in res) {
-                p = initializeProfile(r)
-            }
+        var res: FindIterable<Document> = mongodb.findOne(id)
+        for (r in res) {
+            p = initializeProfile(r)
         }
         return p!!
     }
